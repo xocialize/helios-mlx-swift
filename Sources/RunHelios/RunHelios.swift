@@ -51,10 +51,45 @@ func runS0Gate(checkpointDir: String) -> Bool {
     return pass
 }
 
+/// S1a: convert the HF transformer → canonical MLX, then verify the written
+/// headers equal HeliosWeightKeys.ditKeys() bijectively (the S0 contract, now
+/// against the REAL converted output rather than the HF index).
+func runConvert(checkpointDir: String, outURL: URL) -> Bool {
+    do {
+        print("[convert] \(checkpointDir)/transformer → \(outURL.path) (bf16, CPU stream)…")
+        let t0 = Date()
+        let written = try HeliosConverter.convertTransformer(
+            srcDir: URL(filePath: checkpointDir), outURL: outURL)
+        print(String(format: "[convert] wrote %d keys in %.1fs", written.count, -t0.timeIntervalSinceNow))
+
+        let expected = HeliosWeightKeys.ditKeys(layers: 40)
+        let missing = expected.subtracting(written)
+        let unused = written.subtracting(expected)
+        if !missing.isEmpty { print("[convert] MISSING (\(missing.count)): \(missing.sorted().prefix(12))") }
+        if !unused.isEmpty { print("[convert] UNUSED  (\(unused.count)): \(unused.sorted().prefix(12))") }
+        let pass = missing.isEmpty && unused.isEmpty
+        print(pass ? "[convert] PASS (canonical headers == contract)" : "[convert] FAIL")
+        return pass
+    } catch {
+        print("[convert] ERROR: \(error)")
+        return false
+    }
+}
+
 let checkpoint = argValue("--checkpoint") ?? defaultCheckpoint
+let convertOut = URL(filePath:
+    argValue("--out") ?? "/Volumes/DEV_ARCHIVE/weights/Helios-Distilled-MLX/model.safetensors")
 
 if CommandLine.arguments.contains("--s0-gate") {
     exit(runS0Gate(checkpointDir: checkpoint) ? 0 : 1)
 }
+if CommandLine.arguments.contains("--convert") {
+    try? FileManager.default.createDirectory(
+        at: convertOut.deletingLastPathComponent(), withIntermediateDirectories: true)
+    exit(runConvert(checkpointDir: checkpoint, outURL: convertOut) ? 0 : 1)
+}
 
-print("RunHelios — Helios-Distilled port gates. Usage: RunHelios --s0-gate [--checkpoint <dir>]")
+print("RunHelios — Helios-Distilled port gates.")
+print("  --s0-gate              key contract vs HF index.json")
+print("  --convert [--out <f>]  HF transformer → canonical MLX + header check")
+print("  [--checkpoint <dir>]")

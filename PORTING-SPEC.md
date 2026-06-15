@@ -123,7 +123,8 @@ history → 3 scales → denoise current through the pyramid → append → carr
 | phase | gate |
 |---|---|
 | **S0** key contract | ✅ **DONE + GATED 2026-06-14**: `HeliosWeightKeys.{ditKeys,canonicalize}` encode the 1101-key canonical contract + the 4 renames. `RunHelios --s0-gate` against the real HF `index.json` = **PASS (1101 bijective, 0 missing/0 unused)**; 3 structural `swift test` cases green. Package builds on `wan-core`. T5/VAE reuse confirmed. |
-| **S1** substrate | per-component forwards vs PR #21 fixtures (real weights, CPU stream): patch embed, one block (restricted attn off → must equal Wan block), RoPE, time/text embed. |
+| **S1a** converter | ✅ **DONE 2026-06-14**: `HeliosConverter` (Swift re-port of `convert_helios`, CPU-stream pinned for the Metal-watchdog) writes canonical MLX `model.safetensors` (27 GB bf16); `RunHelios --convert` = **PASS** (1101 headers == contract). Output at `/Volumes/DEV_ARCHIVE/weights/Helios-Distilled-MLX/`. NB: HF transformer is **fp32** (~54 GB) → bf16 cast is real. |
+| **S1b** substrate | per-component forwards vs PR #21 fixtures (real weights, CPU stream): patch embed, one block (restricted attn off → must equal Wan block), RoPE, time/text embed. Reuse wan-core `RoPE`/`WanLayerNorm` (need `public` exposure) + likely a Helios attention/block that adds the AR superset. |
 | **S2** AR core | per-chunk denoise golden (injected noise/context) through the DMD pyramid; history-injection + zero-t0 + restricted/selective attn each fixture-gated. |
 | **S2b** GPU eyeball | tokenizer wiring + ONE real chunk on GPU. |
 | **S3+** AR loop | full 33-frame-chunk autoregressive generation w/ rolling history; per-chunk parity. |

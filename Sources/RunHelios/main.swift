@@ -9,6 +9,7 @@
 // S1+ gates (component forwards, AR chunk, DMD) land here as they're ported.
 
 import Foundation
+import MLX
 import Helios
 
 let defaultCheckpoint =
@@ -76,6 +77,44 @@ func runConvert(checkpointDir: String, outURL: URL) -> Bool {
     }
 }
 
+/// Convert the Helios diffusers VAE → canonical MLX, then GATE the output bit-exactly
+/// against Bernini's already-canonical vae.safetensors (the perfect oracle: the VAE is
+/// the same shared Wan 16-ch VAE). Proves the diffusers→canonical mapping is correct.
+func runConvertVAE(checkpointDir: String, outURL: URL, oracleVAE: URL) -> Bool {
+    do {
+        print("[convert-vae] \(checkpointDir)/vae → \(outURL.path) (fp32, CPU stream)…")
+        let t0 = Date()
+        let written = try HeliosVAEConverter.convertVAE(srcDir: URL(filePath: checkpointDir), outURL: outURL)
+        print(String(format: "[convert-vae] wrote %d keys in %.1fs", written.count, -t0.timeIntervalSinceNow))
+
+        guard FileManager.default.fileExists(atPath: oracleVAE.path) else {
+            print("[convert-vae] DONE (no oracle at \(oracleVAE.path) to gate against)")
+            return true
+        }
+        return try Device.withDefaultDevice(.cpu) {
+            let got = try MLX.loadArrays(url: outURL)
+            let exp = try MLX.loadArrays(url: oracleVAE)
+            let gk = Set(got.keys), ek = Set(exp.keys)
+            let missing = ek.subtracting(gk), extra = gk.subtracting(ek)
+            var worst: Float = 0
+            for k in gk.intersection(ek) {
+                let d = MLX.abs(got[k]!.asType(.float32) - exp[k]!.asType(.float32)).max().item(Float.self)
+                worst = Swift.max(worst, d)
+            }
+            if !missing.isEmpty { print("[convert-vae] MISSING (\(missing.count)): \(missing.sorted().prefix(8))") }
+            if !extra.isEmpty { print("[convert-vae] EXTRA (\(extra.count)): \(extra.sorted().prefix(8))") }
+            let pass = missing.isEmpty && extra.isEmpty && gk.count == 194 && worst == 0
+            print("[convert-vae] keys \(gk.count) vs oracle \(ek.count) | max_abs=\(worst)")
+            print(pass ? "[convert-vae] PASS (194 keys, bit-exact vs Bernini canonical → shared VAE confirmed)"
+                       : "[convert-vae] FAIL")
+            return pass
+        }
+    } catch {
+        print("[convert-vae] ERROR: \(error)")
+        return false
+    }
+}
+
 let checkpoint = argValue("--checkpoint") ?? defaultCheckpoint
 let convertOut = URL(filePath:
     argValue("--out") ?? "/Volumes/DEV_ARCHIVE/weights/Helios-Distilled-MLX/model.safetensors")
@@ -118,6 +157,31 @@ if CommandLine.arguments.contains("--s3-decode") {
         ?? "/Volumes/DEV_ARCHIVE/weights/bernini-r-mlx-weights/ckpt-bf16/vae.safetensors")
     exit(runS3Decode(vaePath: vae, fixtures: fixtures) ? 0 : 1)
 }
+if CommandLine.arguments.contains("--generate") {
+    let steps = argValue("--pyramid").map { $0.split(separator: ",").compactMap { Int($0) } } ?? [2, 2, 2]
+    exit(runGenerate(
+        prompt: argValue("--prompt") ?? "a cat playing the piano, cinematic",
+        width: argValue("--width").flatMap(Int.init) ?? 128,
+        height: argValue("--height").flatMap(Int.init) ?? 128,
+        numFrames: argValue("--frames").flatMap(Int.init) ?? 33,
+        seed: argValue("--seed").flatMap(UInt64.init) ?? 42,
+        pyramidSteps: steps,
+        amplify: !CommandLine.arguments.contains("--no-amplify"),
+        mlxModel: mlxModelURL,
+        berniniDir: URL(filePath: argValue("--bernini")
+            ?? "/Volumes/DEV_ARCHIVE/weights/bernini-r-mlx-weights/ckpt-bf16"),
+        outDir: URL(filePath: argValue("--out-dir") ?? "/tmp/helios")) ? 0 : 1)
+}
+// (runGenerate bridges to async internally; no top-level await.)
+if CommandLine.arguments.contains("--convert-vae") {
+    let out = URL(filePath: argValue("--vae-out")
+        ?? "/Volumes/DEV_ARCHIVE/weights/Helios-Distilled-MLX/vae.safetensors")
+    let oracle = URL(filePath: argValue("--vae")
+        ?? "/Volumes/DEV_ARCHIVE/weights/bernini-r-mlx-weights/ckpt-bf16/vae.safetensors")
+    try? FileManager.default.createDirectory(
+        at: out.deletingLastPathComponent(), withIntermediateDirectories: true)
+    exit(runConvertVAE(checkpointDir: checkpoint, outURL: out, oracleVAE: oracle) ? 0 : 1)
+}
 if CommandLine.arguments.contains("--convert") {
     try? FileManager.default.createDirectory(
         at: convertOut.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -131,5 +195,8 @@ print("  --s2-gate [--mlx <f>]  forward+history parity vs oracle fixtures")
 print("  --s3-sched-gate        DMD scheduler trajectories (offline)")
 print("  --s3-gate [--bf16]     AR generation loop parity (fp32 default; injected noise)")
 print("  --s3-decode [--vae <f>] VAE-decode smoke (reuse wan-core WanVAE; GPU)")
+print("  --generate --prompt <s> [--width/--height/--frames/--seed/--pyramid a,b,c/--no-amplify/--out-dir]")
+print("                         real t2v run on GPU (fp32 DiT, shared umT5+VAE) → PNG frames")
 print("  --convert [--out <f>]  HF transformer → canonical MLX + header check")
+print("  --convert-vae          diffusers VAE → canonical MLX + bit-exact gate vs Bernini")
 print("  [--checkpoint <dir>]")

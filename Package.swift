@@ -40,6 +40,7 @@ let package = Package(
             dependencies: [
                 "Helios",
                 .product(name: "WanCore", package: "wan-core-mlx-swift"),
+                .product(name: "Tokenizers", package: "swift-transformers"),
             ],
             path: "Sources/RunHelios"
         ),

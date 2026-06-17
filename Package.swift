@@ -14,6 +14,8 @@ let package = Package(
     ],
     products: [
         .library(name: "Helios", targets: ["Helios"]),
+        // The MLXEngine ModelPackage wrapper (S7) — register with MLXServeEngine.
+        .library(name: "MLXHelios", targets: ["MLXHelios"]),
     ],
     dependencies: [
         .package(url: "https://github.com/ml-explore/mlx-swift.git", from: "0.30.0"),
@@ -21,6 +23,8 @@ let package = Package(
         // The neutral Wan substrate (DiT + VAE + umT5 + RoPE + schedulers + loader). Local path
         // during B1; tagged dep later. Helios reuses it as-is and adds only the AR delta.
         .package(path: "../wan-core-mlx-swift"),
+        // MLXEngine contract (MLXToolKit) for the wrapper target.
+        .package(url: "https://github.com/xocialize/mlx-engine-swift", from: "0.4.0"),
     ],
     targets: [
         .target(
@@ -34,6 +38,15 @@ let package = Package(
                 .product(name: "Tokenizers", package: "swift-transformers"),
             ],
             path: "Sources/Helios"
+        ),
+        .target(
+            name: "MLXHelios",
+            dependencies: [
+                "Helios",
+                .product(name: "WanCore", package: "wan-core-mlx-swift"),
+                .product(name: "MLXToolKit", package: "mlx-engine-swift"),
+            ],
+            path: "Sources/MLXHelios"
         ),
         .executableTarget(
             name: "RunHelios",

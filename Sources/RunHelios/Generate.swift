@@ -67,78 +67,32 @@ func generateImpl(
 ) async -> Bool {
     do {
         try FileManager.default.createDirectory(at: outDir, withIntermediateDirectories: true)
-        let config = HeliosConfig.heliosDistilled()
-        let wanConfig = try WanConfig.load(from: berniniDir.appending(path: "config.json"))
+        // `mlxModel` points at <dir>/model.safetensors → the Helios canonical dir (DiT + VAE).
+        // umT5 comes from the shared sibling Wan checkpoint (`berniniDir`).
+        let modelDir = mlxModel.deletingLastPathComponent()
+        print("Loading Helios pipeline (DiT \(modelDir.lastPathComponent), umT5 \(berniniDir.lastPathComponent)) …")
+        let tLoad = Date()
+        let pipe = try await HeliosPipeline.fromPretrained(modelDir: modelDir, textEncoderDir: berniniDir)
+        print(String(format: "  load (%.1fs)", -tLoad.timeIntervalSinceNow))
 
-        do {
-            // 1. Tokenizer + umT5 encode (shared umT5-XXL), then EVICT the encoder.
-            let tokenizer = try await AutoTokenizer.from(pretrained: umt5TokenizerRepo)
-            print("Encoding prompt with umT5 …")
-            let tEnc = Date()
-            let context: MLXArray = try {
-                var enc: UMT5EncoderModel? = UMT5EncoderModel.fromConfig(wanConfig)
-                let t5 = try MLX.loadArrays(url: berniniDir.appending(path: "t5_encoder.safetensors"))
-                    .mapValues { $0.asType(.float32) }
-                try enc!.update(parameters: ModuleParameters.unflattened(t5), verify: [.noUnusedKeys])
-                eval(enc!)  // materialize the bf16→fp32 upcast NOW; else the lazy 11GB cast
-                            // folds into the encode command buffer and trips the GPU watchdog
-                let c = encodeText(encoder: enc!, tokenizer: tokenizer, prompt: prompt, textLen: config.textLen)
-                eval(c)
-                enc = nil
-                MLX.GPU.clearCache()
-                return c
-            }()
-            print(String(format: "  context %@  (%.1fs)", "\(context.shape)", -tEnc.timeIntervalSinceNow))
+        print("Generating @ \(width)x\(height), \(numFrames)f, pyramid \(pyramidSteps)"
+            + "\(amplify ? "+amplify" : ""), seed \(seed)")
+        let tGen = Date()
+        let video = try pipe.t2v(
+            prompt: prompt, width: width, height: height, numFrames: numFrames,
+            pyramidSteps: pyramidSteps, amplify: amplify, seed: seed)
+        eval(video)
+        print(String(format: "  generate+decode (%.1fs)  peak %.1f GB", -tGen.timeIntervalSinceNow,
+                     Double(MLX.GPU.peakMemory) / 1e9))
 
-            // 2. Helios transformer (fp32 = production DiT).
-            print("Loading Helios transformer (fp32) …")
-            let tLoad = Date()
-            let model = HeliosModel(config)
-            let weights = try MLX.loadArrays(url: mlxModel).mapValues { $0.asType(.float32) }
-            try model.update(parameters: ModuleParameters.unflattened(weights), verify: [.noUnusedKeys])
-            eval(model)
-            let ctxEmb = model.embedText([context])
-            let crossKV = model.crossKVCaches(ctxEmb)
-            eval(ctxEmb)
-            print(String(format: "  load+embed (%.1fs)", -tLoad.timeIntervalSinceNow))
-
-            // 3. AR generation (live noise, fp32, GPU).
-            let gen = HeliosGeneration(model: model, config: config)
-            let (w, h, numChunks) = gen.align(
-                width: width, height: height, numFrames: numFrames, pyramidStages: pyramidSteps.count)
-            let hLat = h / config.vaeStride[1], wLat = w / config.vaeStride[2]
-            print("Generating \(numChunks) chunk(s) @ \(w)x\(h) (latent \(hLat)x\(wLat)), "
-                + "pyramid \(pyramidSteps)\(amplify ? "+amplify" : ""), seed \(seed)")
-            MLXRandom.seed(seed)
-            let tGen = Date()
-            let chunks = gen.generate(
-                contextEmbedded: ctxEmb, crossKV: crossKV, hLatent: hLat, wLatent: wLat,
-                numChunks: numChunks, pyramidSteps: pyramidSteps, amplifyFirstChunk: amplify,
-                noise: .live(patchSize: config.patchSize, gamma: Double(config.gamma)),
-                computeDType: .float32)
-            eval(chunks)
-            print(String(format: "  generate (%.1fs)  peak %.1f GB", -tGen.timeIntervalSinceNow,
-                         Double(MLX.GPU.peakMemory) / 1e9))
-
-            // 4. VAE decode (shared 16-ch WanVAE).
-            print("Decoding with VAE …")
-            let vae = WanVAE(zDim: config.vaeZDim, encoder: true)
-            let vaeW = try MLX.loadArrays(url: berniniDir.appending(path: "vae.safetensors"))
-            try vae.update(parameters: ModuleParameters.unflattened(vaeW), verify: [.noUnusedKeys])
-            eval(vae)
-            let video = gen.decode(chunks, vae: vae)  // [1, 3, T, H, W] in [-1, 1]
-            eval(video)
-
-            let t = video.dim(2)
-            for i in 0..<t {
-                try writePNG(video[0, 0..., i, 0..., 0...],
-                             to: outDir.appending(path: String(format: "frame_%03d.png", i)))
-            }
-            print("Wrote \(t) frame(s) → \(outDir.path)")
-            let lo = video.min().item(Float.self), hi = video.max().item(Float.self)
-            print("  video \(video.shape) range=[\(lo), \(hi)]")
-            return true
+        let t = video.dim(2)
+        for i in 0..<t {
+            try writePNG(video[0, 0..., i, 0..., 0...],
+                         to: outDir.appending(path: String(format: "frame_%03d.png", i)))
         }
+        let lo = video.min().item(Float.self), hi = video.max().item(Float.self)
+        print("Wrote \(t) frame(s) → \(outDir.path)  video \(video.shape) range=[\(lo), \(hi)]")
+        return true
     } catch {
         print("[generate] ERROR: \(error)")
         return false

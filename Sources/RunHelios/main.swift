@@ -187,6 +187,26 @@ if CommandLine.arguments.contains("--convert") {
         at: convertOut.deletingLastPathComponent(), withIntermediateDirectories: true)
     exit(runConvert(checkpointDir: checkpoint, outURL: convertOut) ? 0 : 1)
 }
+if CommandLine.arguments.contains("--convert-int4") {
+    let out = URL(filePath: argValue("--int4-out")
+        ?? "/Volumes/DEV_ARCHIVE/weights/Helios-Distilled-MLX-int4/model.safetensors")
+    try? FileManager.default.createDirectory(
+        at: out.deletingLastPathComponent(), withIntermediateDirectories: true)
+    do {
+        print("[convert-int4] \(mlxModelURL.path) → \(out.path) (int4 g64, CPU stream)…")
+        let t0 = Date()
+        let n = try HeliosConverter.quantizeTransformer(
+            canonicalURL: mlxModelURL, outURL: out, config: .heliosDistilled())
+        print(String(format: "[convert-int4] %d Linears quantized in %.1fs → PASS", n, -t0.timeIntervalSinceNow))
+        exit(n == 40 * 10 ? 0 : 1)
+    } catch { print("[convert-int4] ERROR: \(error)"); exit(1) }
+}
+if CommandLine.arguments.contains("--s6-gate") {
+    let int4 = URL(filePath: argValue("--int4")
+        ?? "/Volumes/DEV_ARCHIVE/weights/Helios-Distilled-MLX-int4/model.safetensors")
+    let fixtures = URL(filePath: argValue("--fixtures") ?? "Tests/HeliosTests/Fixtures/s2")
+    exit(runS6Gate(int4Model: int4, fixtures: fixtures) ? 0 : 1)
+}
 
 print("RunHelios — Helios-Distilled port gates.")
 print("  --s0-gate              key contract vs HF index.json")
@@ -199,4 +219,6 @@ print("  --generate --prompt <s> [--width/--height/--frames/--seed/--pyramid a,b
 print("                         real t2v run on GPU (fp32 DiT, shared umT5+VAE) → PNG frames")
 print("  --convert [--out <f>]  HF transformer → canonical MLX + header check")
 print("  --convert-vae          diffusers VAE → canonical MLX + bit-exact gate vs Bernini")
+print("  --convert-int4         quantize canonical transformer → int4 (block Linears)")
+print("  --s6-gate [--int4 <f>] int4 vs bf16 forward cosine (≥0.99) on the S2 fixture")
 print("  [--checkpoint <dir>]")

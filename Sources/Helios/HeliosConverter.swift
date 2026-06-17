@@ -14,8 +14,44 @@
 
 import Foundation
 import MLX
+import MLXNN
 
 public enum HeliosConverter {
+
+    /// The int4 recipe's scope — the 10 heavyweight Linears per block (attn q/k/v/o +
+    /// cross-attn q/k/v/o + ffn fc1/fc2). Norms / modulation / patch-embeds / head stay
+    /// full precision. 1:1 with the oracle `convert_helios._quantize_predicate`.
+    static let blockLinearSuffixes = [
+        ".self_attn.q", ".self_attn.k", ".self_attn.v", ".self_attn.o",
+        ".cross_attn.q", ".cross_attn.k", ".cross_attn.v", ".cross_attn.o",
+        ".ffn.fc1", ".ffn.fc2",
+    ]
+
+    /// Quantize the canonical bf16 transformer → int4 `model.safetensors` (+scales/biases
+    /// on the block Linears). Loads the real weights first, then `MLXNN.quantize` (so the
+    /// produced scales reflect the trained weights, not zero-fill). CPU stream (watchdog).
+    /// - Returns: number of Linears quantized.
+    @discardableResult
+    public static func quantizeTransformer(
+        canonicalURL: URL, outURL: URL, config: HeliosConfig, bits: Int = 4, groupSize: Int = 64
+    ) throws -> Int {
+        var nQuant = 0
+        try Device.withDefaultDevice(.cpu) {
+            let model = HeliosModel(config)
+            let weights = try MLX.loadArrays(url: canonicalURL)
+            try model.update(parameters: ModuleParameters.unflattened(weights), verify: [.noUnusedKeys])
+            eval(model)
+            MLXNN.quantize(model: model, groupSize: groupSize, bits: bits) { path, m in
+                m is Linear && blockLinearSuffixes.contains { path.hasSuffix($0) }
+            }
+            let flat = model.parameters().flattened()
+            nQuant = flat.filter { $0.0.hasSuffix(".scales") }.count
+            let out = Dictionary(uniqueKeysWithValues: flat)
+            eval(Array(out.values))
+            try MLX.save(arrays: out, url: outURL, stream: .cpu)
+        }
+        return nQuant
+    }
 
     /// HF keys that carry no canonical weight (consumed-and-dropped by the oracle).
     static func isSkippable(_ key: String) -> Bool {

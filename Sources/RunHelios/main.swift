@@ -80,8 +80,15 @@ let checkpoint = argValue("--checkpoint") ?? defaultCheckpoint
 let convertOut = URL(filePath:
     argValue("--out") ?? "/Volumes/DEV_ARCHIVE/weights/Helios-Distilled-MLX/model.safetensors")
 
+let mlxModelURL = URL(filePath:
+    argValue("--mlx") ?? "/Volumes/DEV_ARCHIVE/weights/Helios-Distilled-MLX/model.safetensors")
+
 if CommandLine.arguments.contains("--s0-gate") {
     exit(runS0Gate(checkpointDir: checkpoint) ? 0 : 1)
+}
+if CommandLine.arguments.contains("--s1-gate") {
+    let fixtures = URL(filePath: argValue("--fixtures") ?? "Tests/HeliosTests/Fixtures/s1")
+    exit(runS1Gate(mlxModel: mlxModelURL, fixtures: fixtures) ? 0 : 1)
 }
 if CommandLine.arguments.contains("--convert") {
     try? FileManager.default.createDirectory(
@@ -91,5 +98,6 @@ if CommandLine.arguments.contains("--convert") {
 
 print("RunHelios — Helios-Distilled port gates.")
 print("  --s0-gate              key contract vs HF index.json")
+print("  --s1-gate [--mlx <f>]  component parity vs oracle fixtures (real weights)")
 print("  --convert [--out <f>]  HF transformer → canonical MLX + header check")
 print("  [--checkpoint <dir>]")

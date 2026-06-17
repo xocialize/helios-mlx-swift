@@ -28,17 +28,18 @@ public final class HeliosPackage: ModelPackage {
                 tier: 1
             ),
             requirements: RequirementsManifest(
-                // ⚠️ PROVISIONAL (conservative-HIGH) footprints — this box can't run the model's
-                // native 640×384/minute-scale regime (and the Python oracle trips the GPU watchdog
-                // here, so no A/B). Observed peaks via RunHelios --generate: bf16 = fp32-run DiT 82
-                // GB phys at 64²/1-chunk (the 56 GB fp32 DiT co-resides with the 22 GB umT5 during
-                // encode); production res scales the activations far higher. int4 DiT is 8.4 GB (vs
-                // 56 GB) → a much lighter path. Declared HIGH so the governor never under-budgets
-                // and OOMs (the safe failure is under-admission); these MUST be re-measured at the
-                // production envelope in APP-VALIDATION to TIGHTEN them (cf. Bernini's 1.3B caveat).
+                // Footprints GROUNDED by the WANVideoTesting live app (Xcode agent, 2026-06-17,
+                // M5 Max / 128 GB, peak phys_footprint). int4: 37 GB @128² → 54 GB @640×384 (native;
+                // the AR loop's per-chunk working set is bounded by the fixed 19-frame history, so
+                // longer videos don't raise the peak) → declare 56 GB. This is the viable production
+                // path. bf16/fp32: 88 GB @128² and extrapolates WELL PAST 128 GB @640×384 (OOMs on a
+                // 128 GB box — int4 is the only native-res path there) → declare 160 GB to gate bf16
+                // to >128 GB pro hardware (safe under-admission; never admit-then-OOM; exact @640
+                // peak unmeasured). Engine W1: the variant-unaware governor charged 48 GB for ALL
+                // three runs (bf16 actually used 88) → config-aware footprint selection still needed.
                 footprints: [
-                    QuantFootprint(quant: .bf16, residentBytes: 128_000_000_000),
-                    QuantFootprint(quant: .int4, residentBytes: 48_000_000_000),
+                    QuantFootprint(quant: .bf16, residentBytes: 160_000_000_000),
+                    QuantFootprint(quant: .int4, residentBytes: 56_000_000_000),
                 ],
                 requiredBackends: [.metalGPU],
                 os: OSRequirement(minMacOS: SemanticVersion(major: 26, minor: 0, patch: 0)),

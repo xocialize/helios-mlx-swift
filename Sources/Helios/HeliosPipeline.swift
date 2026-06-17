@@ -83,7 +83,7 @@ public final class HeliosPipeline: @unchecked Sendable {
         let ctx = encodeText(encoder: enc!, tokenizer: tokenizer, prompt: prompt, textLen: config.textLen)
         eval(ctx)
         enc = nil
-        MLX.GPU.clearCache()
+        MLX.Memory.clearCache()
         return ctx
     }
 

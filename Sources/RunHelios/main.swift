@@ -98,6 +98,26 @@ if CommandLine.arguments.contains("--s3-sched-gate") {
     let fixtures = URL(filePath: argValue("--fixtures") ?? "Tests/HeliosTests/Fixtures/s3")
     exit(runS3SchedGate(fixtures: fixtures) ? 0 : 1)
 }
+// The production Helios DiT runs fp32 (per-forward parity at the precision floor);
+// gate there by default. --bf16 opts into the loose functional bound.
+let fp32 = !CommandLine.arguments.contains("--bf16")
+if CommandLine.arguments.contains("--s3-gate") {
+    let dir = fp32 ? "Tests/HeliosTests/Fixtures/s3loop_fp32" : "Tests/HeliosTests/Fixtures/s3loop"
+    let fixtures = URL(filePath: argValue("--fixtures") ?? dir)
+    exit(runS3Gate(mlxModel: mlxModelURL, fixtures: fixtures, fp32: fp32) ? 0 : 1)
+}
+if CommandLine.arguments.contains("--s3-localize") {
+    let dir = fp32 ? "Tests/HeliosTests/Fixtures/s3loop_fp32" : "Tests/HeliosTests/Fixtures/s3loop"
+    let fixtures = URL(filePath: argValue("--fixtures") ?? dir)
+    exit(runS3Localize(mlxModel: mlxModelURL, fixtures: fixtures, fp32: fp32) ? 0 : 1)
+}
+if CommandLine.arguments.contains("--s3-decode") {
+    let dir = fp32 ? "Tests/HeliosTests/Fixtures/s3loop_fp32" : "Tests/HeliosTests/Fixtures/s3loop"
+    let fixtures = URL(filePath: argValue("--fixtures") ?? dir)
+    let vae = URL(filePath: argValue("--vae")
+        ?? "/Volumes/DEV_ARCHIVE/weights/bernini-r-mlx-weights/ckpt-bf16/vae.safetensors")
+    exit(runS3Decode(vaePath: vae, fixtures: fixtures) ? 0 : 1)
+}
 if CommandLine.arguments.contains("--convert") {
     try? FileManager.default.createDirectory(
         at: convertOut.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -107,5 +127,9 @@ if CommandLine.arguments.contains("--convert") {
 print("RunHelios — Helios-Distilled port gates.")
 print("  --s0-gate              key contract vs HF index.json")
 print("  --s1-gate [--mlx <f>]  component parity vs oracle fixtures (real weights)")
+print("  --s2-gate [--mlx <f>]  forward+history parity vs oracle fixtures")
+print("  --s3-sched-gate        DMD scheduler trajectories (offline)")
+print("  --s3-gate [--bf16]     AR generation loop parity (fp32 default; injected noise)")
+print("  --s3-decode [--vae <f>] VAE-decode smoke (reuse wan-core WanVAE; GPU)")
 print("  --convert [--out <f>]  HF transformer → canonical MLX + header check")
 print("  [--checkpoint <dir>]")

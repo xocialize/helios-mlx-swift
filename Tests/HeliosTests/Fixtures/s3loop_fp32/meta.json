@@ -1,0 +1,21 @@
+{
+  "seed": 1234,
+  "width": 64,
+  "height": 64,
+  "h_latent": 8,
+  "w_latent": 8,
+  "num_chunks": 2,
+  "pyramid_steps": [
+    1,
+    1,
+    1
+  ],
+  "amplify_first_chunk": false,
+  "in_dim": 16,
+  "num_latent_per_chunk": 9,
+  "history_sizes": [
+    16,
+    2,
+    1
+  ]
+}

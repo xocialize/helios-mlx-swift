@@ -153,7 +153,7 @@ public final class HeliosModel: Module, @unchecked Sendable {
         return textEmbedding1(geluApproximate(textEmbedding0(stacked(padded)))).asType(modelDtype)
     }
 
-    func crossKVCaches(_ context: MLXArray) -> [(MLXArray, MLXArray)] {
+    public func crossKVCaches(_ context: MLXArray) -> [(MLXArray, MLXArray)] {
         blocks.map { $0.crossAttn.prepareKV(context) }
     }
 

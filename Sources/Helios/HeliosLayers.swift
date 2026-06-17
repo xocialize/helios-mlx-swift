@@ -9,6 +9,14 @@ import MLXFast
 import MLXNN
 import WanCore
 
+// Env-gated bisection trace (HELIOS_TRACE=1) → stderr (unbuffered, survives a crash).
+let heliosTraceEnabled = ProcessInfo.processInfo.environment["HELIOS_TRACE"] != nil
+func heliosTrace(_ s: String, _ a: MLXArray? = nil) {
+    guard heliosTraceEnabled else { return }
+    if let a { eval(a) }
+    FileHandle.standardError.write(Data("[trace] \(s)\(a.map { " \($0.shape)" } ?? "")\n".utf8))
+}
+
 /// RMS norm over the FULL dim (qk_norm "rms_norm_across_heads": applied to the
 /// [B,L,dim] projection before the head reshape, NOT per-head).
 final class HeliosRMSNorm: Module, @unchecked Sendable {

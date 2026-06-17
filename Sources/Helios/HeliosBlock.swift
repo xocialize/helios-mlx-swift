@@ -58,6 +58,13 @@ final class HeliosTransformerBlock: Module, @unchecked Sendable {
         let normX = (norm1(x) * (1 + scaleMsa) + shiftMsa).asType(wDtype)
         let attnOut = selfAttn(normX, ropeCosSin: ropeCosSin, originalContextLength: originalContextLength)
         x = (x.asType(.float32) + attnOut * gateMsa).asType(wDtype)
+        // Intra-block eval bounds the Metal command-buffer at video seqLen — a
+        // single block's whole lazy graph (90 MB fp32 modulation + self/cross-attn
+        // + FFN) overruns the ~10s GPU watchdog at L≈736; per-BLOCK eval alone is
+        // too coarse (per the trace bisection). The wan-core watchdog discipline,
+        // one notch finer for Helios's larger per-block graph.
+        eval(x)
+        heliosTrace("  blk:selfattn", x)
 
         // 2. Cross-attention (history tokens skip it)
         if historyLen > 0 {
@@ -72,6 +79,8 @@ final class HeliosTransformerBlock: Module, @unchecked Sendable {
             let crossOut = crossAttn(normFull, context: context, kvCache: crossKVCache)
             x = (x.asType(.float32) + crossOut).asType(wDtype)
         }
+        eval(x)
+        heliosTrace("  blk:crossattn", x)
 
         // 3. Feed-forward
         let normF = (normFfn(x) * (1 + cScale) + cShift).asType(wDtype)

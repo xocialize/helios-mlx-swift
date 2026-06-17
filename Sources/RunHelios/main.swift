@@ -94,6 +94,10 @@ if CommandLine.arguments.contains("--s2-gate") {
     let fixtures = URL(filePath: argValue("--fixtures") ?? "Tests/HeliosTests/Fixtures/s2")
     exit(runS2Gate(mlxModel: mlxModelURL, fixtures: fixtures) ? 0 : 1)
 }
+if CommandLine.arguments.contains("--s3-sched-gate") {
+    let fixtures = URL(filePath: argValue("--fixtures") ?? "Tests/HeliosTests/Fixtures/s3")
+    exit(runS3SchedGate(fixtures: fixtures) ? 0 : 1)
+}
 if CommandLine.arguments.contains("--convert") {
     try? FileManager.default.createDirectory(
         at: convertOut.deletingLastPathComponent(), withIntermediateDirectories: true)

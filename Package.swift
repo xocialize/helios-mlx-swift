@@ -24,7 +24,7 @@ let package = Package(
         // during B1; tagged dep later. Helios reuses it as-is and adds only the AR delta.
         .package(path: "../wan-core-mlx-swift"),
         // MLXEngine contract (MLXToolKit) for the wrapper target.
-        .package(url: "https://github.com/xocialize/mlx-engine-swift", from: "0.4.0"),
+        .package(url: "https://github.com/xocialize/mlx-engine-swift", from: "0.9.1"),
     ],
     targets: [
         .target(

@@ -13,7 +13,7 @@ import MLXToolKit
 /// `config.json`) — Helios reuses the same encoder (S5 proved the VAE bit-identical to the
 /// sibling Wan checkpoint; the encoder is likewise shared). A Helios-OWN converted
 /// `t5_encoder.safetensors` co-located in the model dir is the follow-up.
-public struct HeliosConfiguration: PackageConfiguration, ModelStorable {
+public struct HeliosConfiguration: PackageConfiguration, ModelStorable, QuantConfigured {
     /// Canonical Helios checkpoint repo / provenance source.
     public var repo: String
     public var revision: String?

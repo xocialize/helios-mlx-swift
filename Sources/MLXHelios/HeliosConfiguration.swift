@@ -51,3 +51,15 @@ public struct HeliosConfiguration: PackageConfiguration, ModelStorable, QuantCon
         case repo, revision, quant
     }
 }
+
+/// Cold-start weight prewarm (engine ≥0.7.0): page the resolved Helios checkpoint (DiT + VAE) AND
+/// the shared umT5-XXL into the OS file cache before `load()`'s GPU evals, so a cold load-time
+/// `eval` never faults weights off slow/external storage inside a live Metal command buffer (the
+/// cold-load GPU watchdog, `kIOGPUCommandBufferCallbackErrorTimeout`). Helios bf16 is the **heaviest
+/// cold load in the family** (~56 GB DiT, upcast to fp32 at load) — measured not to trip the watchdog
+/// on a 128 GB box, but prewarm is the belt-and-suspenders the LTX fix proved. Both directories are
+/// paged: `modelDirectory` (DiT+VAE) + `textEncoderDirectory` (the family-shared umT5). Only the
+/// config knows the resolved paths; execution is the engine's (`WeightPrewarmer`, best-effort).
+extension HeliosConfiguration: WeightPrewarming {
+    public var prewarmPaths: [URL] { [modelDirectory, textEncoderDirectory].compactMap { $0 } }
+}

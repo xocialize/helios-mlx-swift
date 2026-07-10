@@ -23,8 +23,9 @@ let package = Package(
         // The neutral Wan substrate (DiT + VAE + umT5 + RoPE + schedulers + loader). Local path
         // during B1; tagged dep later. Helios reuses it as-is and adds only the AR delta.
         .package(path: "../wan-core-mlx-swift"),
-        // MLXEngine contract (MLXToolKit) for the wrapper target.
-        .package(url: "https://github.com/xocialize/mlx-engine-swift", from: "0.9.1"),
+        // MLXEngine contract (MLXToolKit) for the wrapper target; ≥0.27.0 for the CAN
+        // cancellation gate (MLXServeConformance.CancellationConformance).
+        .package(url: "https://github.com/xocialize/mlx-engine-swift", from: "0.27.0"),
     ],
     targets: [
         .target(
@@ -64,6 +65,15 @@ let package = Package(
                 .product(name: "WanCore", package: "wan-core-mlx-swift"),
             ],
             path: "Tests/HeliosTests"
+        ),
+        // Wrapper conformance (offline): the CAN cancellation gate.
+        .testTarget(
+            name: "MLXHeliosTests",
+            dependencies: [
+                "MLXHelios",
+                .product(name: "MLXServeConformance", package: "mlx-engine-swift"),
+            ],
+            path: "Tests/MLXHeliosTests"
         ),
     ]
 )

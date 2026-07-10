@@ -109,6 +109,12 @@ public final class HeliosPipeline: @unchecked Sendable {
             noise: .live(patchSize: config.patchSize, gamma: Double(config.gamma)),
             computeDType: .float32,
             onStage: { c, s, _ in if s == 0 { try? onChunk?(c, numChunks) } })
+        // Cancellation seam (CAN gate): `onStage` is non-throwing, so a throw from
+        // `onChunk` is dropped by the `try?` above — the REAL bail is the cooperative
+        // `Task.isCancelled` checks inside `generate` (per chunk / per DMD step). This
+        // checkpoint discards a partial result before decode and rethrows unchanged
+        // (it also guards `decode` against an empty `chunks` after a pre-first-chunk bail).
+        try Task.checkCancellation()
         eval(chunks)
         return gen.decode(chunks, vae: vae)
     }

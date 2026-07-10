@@ -183,6 +183,10 @@ public final class HeliosGeneration {
         var imagePrefix: MLXArray? = nil
 
         for chunkIdx in 0..<numChunks {
+            // Cooperative cancellation (CAN gate): bail per AR chunk. Non-throwing API —
+            // the caller (pipeline/wrapper) discards the partial result via
+            // `try Task.checkCancellation()` right after this returns.
+            if Task.isCancelled { break }
             let isFirst = chunkIdx == 0
 
             let recent = historyLatents[0..., (historyLatents.dim(1) - nHist)...]
@@ -234,6 +238,9 @@ public final class HeliosGeneration {
                 let sig = scheduler.sigmas
 
                 for i in 0..<ts.count {
+                    // Cooperative cancellation (CAN gate): bail per DMD denoise step;
+                    // the chunk-loop bail above exits the rest of the run.
+                    if Task.isCancelled { break }
                     let timestep = MLXArray(Int32(Int(ts[i])))
                     let noisePred = model(
                         latents.asType(computeDType), timestep: timestep,
@@ -279,6 +286,11 @@ public final class HeliosGeneration {
             v = v[0..., 0..., 1...]  // drop overlap frame (33 → 32)
             eval(v)
             videos.append(v)
+            // Cooperative cancellation (CAN gate): bail per decoded chunk (the inner
+            // `decodeStreaming` also bails per temporal chunk). Placed AFTER the first
+            // append so the concat never sees an empty list; the wrapper's post-core
+            // `try Task.checkCancellation()` discards the truncated video.
+            if Task.isCancelled { break }
         }
         return concatenated(videos, axis: 2)
     }

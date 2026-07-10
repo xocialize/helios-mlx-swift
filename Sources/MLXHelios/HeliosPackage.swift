@@ -91,6 +91,9 @@ public final class HeliosPackage: ModelPackage {
     }
 
     public func run(_ request: any CapabilityRequest) async throws -> any CapabilityResponse {
+        // CAN-1: the entry checkpoint is the FIRST act of run() — before the notLoaded
+        // guard, capability validation, or dispatch (run-lifecycle program, engine 0.27.0).
+        try Task.checkCancellation()
         guard let pipeline else { throw PackageError.notLoaded }
         switch request.capability {
         case .textToVideo:
@@ -119,6 +122,9 @@ public final class HeliosPackage: ModelPackage {
             numFrames: request.numFrames ?? 33,
             seed: request.seed ?? 42
         ) { _, _ in try Task.checkCancellation() }  // C13: per-chunk cancellation
+        // Post-core checkpoint: the core's AR/decode loops bail cooperatively on
+        // Task.isCancelled (non-throwing) — discard a truncated result and rethrow here.
+        try Task.checkCancellation()
         let mp4 = try await encodeMP4(frames: frames, fps: fps)
         return T2VResponse(
             video: Video(format: .mp4, data: mp4,

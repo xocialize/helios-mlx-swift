@@ -18,11 +18,11 @@ let package = Package(
         .library(name: "MLXHelios", targets: ["MLXHelios"]),
     ],
     dependencies: [
-        .package(url: "https://github.com/ml-explore/mlx-swift.git", from: "0.30.0"),
+        .package(url: "https://github.com/ml-explore/mlx-swift.git", "0.32.3"..<"0.33.0"),  // NAX split-K fix (AB-R-0778)
         .package(url: "https://github.com/huggingface/swift-transformers", from: "1.1.6"),
         // The neutral Wan substrate (DiT + VAE + umT5 + RoPE + schedulers + loader). Local path
         // during B1; tagged dep later. Helios reuses it as-is and adds only the AR delta.
-        .package(url: "https://github.com/xocialize/wan-core-mlx-swift", from: "0.2.0"),
+        .package(url: "https://github.com/xocialize/wan-core-mlx-swift", from: "0.3.0"),
         // MLXEngine contract (MLXToolKit) for the wrapper target; ≥0.27.0 for the CAN
         // cancellation gate (MLXServeConformance.CancellationConformance).
         .package(url: "https://github.com/xocialize/mlx-engine-swift", from: "0.27.0"),
